@@ -1,42 +1,40 @@
 from pysnmp.hlapi import *
-from pysnmp.smi import builder, view, compiler, rfc1902
 
-def SnmpWalk():
-    # Create a MIB builder
-    mibBuilder = builder.MibBuilder()
-
-    # Add MIB compiler
-    compiler.addMibCompiler(mibBuilder, sources=['file://./mibs/librenms-mibs-master'])
-
-    # Load MIBs
-    mibBuilder.loadModules('IF-MIB', 'JUNIPER-MIB')
-    mibViewController = view.MibViewController(mibBuilder)
-
+def snmp_walk(target, port, user, auth_password, priv_password, auth_proto, priv_proto, base_oid):
     iterator = nextCmd(
         SnmpEngine(),
-        UsmUserData('usr-md5-none', 'django'),
-        UdpTransportTarget(('10.0.0.1', 161)),
+        UsmUserData(user, authKey=auth_password, privKey=priv_password, authProtocol=auth_proto, privProtocol=priv_proto),
+        UdpTransportTarget((target, port)),
         ContextData(),
-        ObjectType(ObjectIdentity('JUNIPER-MIB').addAsn1MibSource('file://./mibs/librenms-mibs-master')),
-        lookupMib=False  # This tells pysnmp not to attempt automatic MIB resolution
+        ObjectType(ObjectIdentity(base_oid)),
+        lexicographicMode=False
     )
 
+    result = {}
     for errorIndication, errorStatus, errorIndex, varBinds in iterator:
-
         if errorIndication:
-            print(errorIndication)
+            print(f"Error Indication: {errorIndication}")
             break
-
         elif errorStatus:
-            print('%s at %s' % (errorStatus.prettyPrint(),
-                                errorIndex and varBinds[int(errorIndex) - 1][0] or '?'))
+            print(f"{errorStatus.prettyPrint()} at {errorIndex and varBinds[int(errorIndex) - 1][0] or '?'}")
             break
-
         else:
             for varBind in varBinds:
-                print(' = '.join([x.prettyPrint() for x in varBind]))
-    pass
+                result[str(varBind[0])] = str(varBind[1])
 
+    return result
 
+# Assuming 'auth_password' and 'priv_password' are the actual passwords
 if __name__ == '__main__':
-    SnmpWalk()
+    # Configuration parameters
+    target = '10.0.0.1'
+    port = 161
+    user = 'django'
+    auth_password = 'django-pass'
+    priv_password = 'django-priv'
+    auth_proto = usmHMACSHAAuthProtocol
+    priv_proto = usmAesCfb128Protocol
+    base_oid = '1.3.6.1'  # Adjusted to a more common starting OID
+
+    result = snmp_walk(target, port, user, auth_password, priv_password, auth_proto, priv_proto, base_oid)
+    print(result)
